@@ -352,5 +352,5 @@ if __name__ == '__main__':
     parser.add_argument("--use_value_clip", type=bool, default=False, help="Whether to use value clipping")
 
     args = parser.parse_args()
-    runner = Runner_MAPPO_PettingZoo(args, env_name="simple_spread", number=1, seed=0)
+    runner = Runner_MAPPO_PettingZoo(args, env_name="simple_spread", number=1, seed=1)
     runner.run()

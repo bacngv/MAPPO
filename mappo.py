@@ -4,7 +4,6 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 from torch.utils.data.sampler import *
 
-
 # Trick 8: orthogonal initialization
 def orthogonal_init(layer, gain=1.0):
     for name, param in layer.named_parameters():
