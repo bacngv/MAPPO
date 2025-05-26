@@ -7,7 +7,7 @@ from torch.utils.tensorboard import SummaryWriter
 import argparse
 from normalization import Normalization, RewardScaling
 from replay_buffer import ReplayBuffer
-from mappo_mpe import MAPPO_MPE
+from mappo import MAPPO_MPE
 import os
 from IPython import display as ipy_display
 from matplotlib.ticker import FuncFormatter
