@@ -12,7 +12,7 @@ import os
 from IPython import display as ipy_display
 from matplotlib.ticker import FuncFormatter
 from pettingzoo.mpe import simple_spread_v3
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import io
 
 class Runner_MAPPO_PettingZoo:
@@ -185,8 +185,130 @@ class Runner_MAPPO_PettingZoo:
         plt.savefig('./data_train/MAPPO_env_{}_number_{}_seed_{}_eval.png'.format(
             self.env_name, self.number, self.seed))
 
+    def get_agent_positions(self, render_env):
+        """Extract agent positions from the environment state"""
+        positions = []
+        
+        # Get world state from the environment
+        world = render_env.unwrapped.world
+        
+        # Extract agent positions
+        for i, agent in enumerate(world.agents):
+            # Convert world coordinates to pixel coordinates
+            # The environment typically uses coordinates from -1 to 1
+            # We need to scale them to the render size
+            x_world = agent.state.p_pos[0]
+            y_world = agent.state.p_pos[1]
+            
+            # Scale to render dimensions (assuming 700x700 render size)
+            # This may need adjustment based on actual render size
+            render_size = 700
+            x_pixel = int((x_world + 1) * render_size / 2)
+            y_pixel = int((1 - y_world) * render_size / 2)  # Flip Y axis
+            
+            positions.append((x_pixel, y_pixel))
+        
+        return positions
+
+    def add_colored_agent_markers(self, frame, agent_positions):
+        """Add colored circular markers with numbers on top of agents"""
+        img = Image.fromarray(frame)
+        draw = ImageDraw.Draw(img)
+        
+        # Agent colors: Agent 1 = Blue, Agent 2 = Orange, Agent 3 = Green
+        agent_colors = [
+            (0, 100, 255),      # Blue for Agent 1
+            (255, 165, 0),      # Orange for Agent 2  
+            (0, 200, 0)         # Green for Agent 3
+        ]
+        
+        # Border colors (darker versions for better visibility)
+        border_colors = [
+            (0, 50, 150),       # Dark Blue
+            (200, 100, 0),      # Dark Orange
+            (0, 120, 0)         # Dark Green
+        ]
+        
+        # Marker settings
+        marker_radius = 28  # Radius of the colored circle (much larger for better visibility)
+        border_width = 4    # Width of the border
+        
+        # Try to get a good font for numbers - INCREASED FONT SIZE
+        try:
+            font = ImageFont.truetype("arial.ttf", 48)  # Increased from 36 to 48
+        except:
+            try:
+                font = ImageFont.truetype("DejaVuSans-Bold.ttf", 48)  # Increased from 36 to 48
+            except:
+                try:
+                    font = ImageFont.load_default()
+                    # Try to get a larger default font if possible
+                    font = font.font_variant(size=48)
+                except:
+                    font = None
+        
+        for i, (x, y) in enumerate(agent_positions):
+            if i < len(agent_colors):
+                # Draw border circle (slightly larger)
+                border_color = border_colors[i % len(border_colors)]
+                draw.ellipse([
+                    x - marker_radius - border_width, 
+                    y - marker_radius - border_width,
+                    x + marker_radius + border_width, 
+                    y + marker_radius + border_width
+                ], fill=border_color)
+                
+                # Draw main colored circle
+                agent_color = agent_colors[i % len(agent_colors)]
+                draw.ellipse([
+                    x - marker_radius, 
+                    y - marker_radius,
+                    x + marker_radius, 
+                    y + marker_radius
+                ], fill=agent_color)
+                
+                # Draw the agent number in the center
+                agent_number = str(i + 1)  # Agent numbers 1, 2, 3
+                
+                # Get text size for centering
+                if font:
+                    bbox = draw.textbbox((0, 0), agent_number, font=font)
+                    text_width = bbox[2] - bbox[0]
+                    text_height = bbox[3] - bbox[1]
+                    # Account for font baseline offset
+                    text_x = x - text_width // 2
+                    text_y = y - text_height // 2 - bbox[1] // 2
+                else:
+                    # Estimate larger text size if font is not available
+                    text_width = 24  # Increased from 18 to 24
+                    text_height = 32  # Increased from 24 to 32
+                    # Center the text
+                    text_x = x - text_width // 2
+                    text_y = y - text_height // 2
+                
+                # Draw text with white color for good contrast and add black outline for better visibility
+                if font:
+                    # Draw black outline for better visibility
+                    outline_size = 2
+                    for dx in range(-outline_size, outline_size + 1):
+                        for dy in range(-outline_size, outline_size + 1):
+                            if dx != 0 or dy != 0:
+                                draw.text((text_x + dx, text_y + dy), agent_number, fill=(0, 0, 0), font=font)
+                    # Draw white text on top
+                    draw.text((text_x, text_y), agent_number, fill=(255, 255, 255), font=font)
+                else:
+                    # Fallback without font - draw with better centering
+                    for dx in range(-1, 2):
+                        for dy in range(-1, 2):
+                            if dx == 0 and dy == 0:
+                                draw.text((text_x, text_y), agent_number, fill=(255, 255, 255))
+                            else:
+                                draw.text((text_x + dx, text_y + dy), agent_number, fill=(0, 0, 0))
+        
+        return np.array(img)
+
     def save_gif_episode(self):
-        """Save a GIF of one episode using the current policy"""
+        """Save a GIF of one episode using the current policy with colored agent markers"""
         print(f"Saving GIF at step {self.total_steps}...")
         
         # Create a separate environment for rendering
@@ -201,10 +323,16 @@ class Runner_MAPPO_PettingZoo:
         frames = []
         observations, infos = render_env.reset(seed=self.seed)
         
-        # Capture initial frame
+        # Capture initial frame with colored markers
         frame = render_env.render()
         if frame is not None:
-            frames.append(Image.fromarray(frame))
+            try:
+                agent_positions = self.get_agent_positions(render_env)
+                colored_frame = self.add_colored_agent_markers(frame, agent_positions)
+                frames.append(Image.fromarray(colored_frame))
+            except Exception as e:
+                print(f"Warning: Could not add colored markers to frame: {e}")
+                frames.append(Image.fromarray(frame))
         
         episode_step = 0
         
@@ -227,10 +355,16 @@ class Runner_MAPPO_PettingZoo:
             # Step environment
             observations, rewards, terminations, truncations, infos = render_env.step(actions)
             
-            # Capture frame
+            # Capture frame with colored markers
             frame = render_env.render()
             if frame is not None:
-                frames.append(Image.fromarray(frame))
+                try:
+                    agent_positions = self.get_agent_positions(render_env)
+                    colored_frame = self.add_colored_agent_markers(frame, agent_positions)
+                    frames.append(Image.fromarray(colored_frame))
+                except Exception as e:
+                    print(f"Warning: Could not add colored markers to frame: {e}")
+                    frames.append(Image.fromarray(frame))
             
             episode_step += 1
             
@@ -352,5 +486,5 @@ if __name__ == '__main__':
     parser.add_argument("--use_value_clip", type=bool, default=False, help="Whether to use value clipping")
 
     args = parser.parse_args()
-    runner = Runner_MAPPO_PettingZoo(args, env_name="simple_spread", number=1, seed=1)
+    runner = Runner_MAPPO_PettingZoo(args, env_name="simple_spread", number=1, seed=2)
     runner.run()

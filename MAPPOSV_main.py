@@ -12,7 +12,7 @@ import os
 from IPython import display as ipy_display
 from matplotlib.ticker import FuncFormatter
 from pettingzoo.mpe import simple_spread_v3
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import io
 
 class Runner_MAPPO_PettingZoo:
@@ -274,8 +274,73 @@ class Runner_MAPPO_PettingZoo:
                 row = [step] + list(shapley) + [baseline]
                 writer.writerow(row)
 
+    def get_agent_positions(self, render_env):
+        """Extract agent positions from the environment state"""
+        positions = []
+        world = render_env.unwrapped.world
+        for agent in world.agents:
+            x_world = agent.state.p_pos[0]
+            y_world = agent.state.p_pos[1]
+            render_size = 700  # Assuming render size is 700x700
+            x_pixel = int((x_world + 1) * render_size / 2)
+            y_pixel = int((1 - y_world) * render_size / 2)
+            positions.append((x_pixel, y_pixel))
+        return positions
+
+    def add_colored_agent_markers(self, frame, agent_positions):
+        """Add colored circular markers with numbers on top of agents"""
+        img = Image.fromarray(frame)
+        draw = ImageDraw.Draw(img)
+        agent_colors = [(0, 100, 255), (255, 165, 0), (0, 200, 0)]  # Blue, orange, green
+        border_colors = [(0, 50, 150), (200, 100, 0), (0, 120, 0)]
+        marker_radius = 28
+        border_width = 4
+        try:
+            font = ImageFont.truetype("arial.ttf", 48)
+        except:
+            try:
+                font = ImageFont.truetype("DejaVuSans-Bold.ttf", 48)
+            except:
+                font = ImageFont.load_default()
+                font = font.font_variant(size=48)
+        
+        for i, (x, y) in enumerate(agent_positions):
+            if i < len(agent_colors):
+                # Draw border
+                draw.ellipse([x - marker_radius - border_width, y - marker_radius - border_width,
+                              x + marker_radius + border_width, y + marker_radius + border_width],
+                             fill=border_colors[i])
+                # Draw colored circle
+                draw.ellipse([x - marker_radius, y - marker_radius, x + marker_radius, y + marker_radius],
+                             fill=agent_colors[i])
+                # Draw agent number
+                agent_number = str(i + 1)
+                if font:
+                    bbox = draw.textbbox((0, 0), agent_number, font=font)
+                    text_width = bbox[2] - bbox[0]
+                    text_height = bbox[3] - bbox[1]
+                    text_x = x - text_width // 2
+                    text_y = y - text_height // 2 - bbox[1] // 2
+                    for dx in range(-2, 3):
+                        for dy in range(-2, 3):
+                            if dx != 0 or dy != 0:
+                                draw.text((text_x + dx, text_y + dy), agent_number, fill=(0, 0, 0), font=font)
+                    draw.text((text_x, text_y), agent_number, fill=(255, 255, 255), font=font)
+                else:
+                    text_width = 24
+                    text_height = 32
+                    text_x = x - text_width // 2
+                    text_y = y - text_height // 2
+                    for dx in range(-1, 2):
+                        for dy in range(-1, 2):
+                            if dx == 0 and dy == 0:
+                                draw.text((text_x, text_y), agent_number, fill=(255, 255, 255))
+                            else:
+                                draw.text((text_x + dx, text_y + dy), agent_number, fill=(0, 0, 0))
+        return np.array(img)
+
     def save_gif_episode(self):
-        """Save a GIF of one episode using the current policy"""
+        """Save a GIF of one episode using the current policy with labeled agents"""
         print(f"Saving GIF at step {self.total_steps}...")
         
         # Create a separate environment for rendering
@@ -290,10 +355,12 @@ class Runner_MAPPO_PettingZoo:
         frames = []
         observations, infos = render_env.reset(seed=self.seed)
         
-        # Capture initial frame
+        # Capture initial frame with agent labels
         frame = render_env.render()
         if frame is not None:
-            frames.append(Image.fromarray(frame))
+            agent_positions = self.get_agent_positions(render_env)
+            colored_frame = self.add_colored_agent_markers(frame, agent_positions)
+            frames.append(Image.fromarray(colored_frame))
         
         episode_step = 0
         
@@ -316,10 +383,12 @@ class Runner_MAPPO_PettingZoo:
             # Step environment
             observations, rewards, terminations, truncations, infos = render_env.step(actions)
             
-            # Capture frame
+            # Capture frame with agent labels
             frame = render_env.render()
             if frame is not None:
-                frames.append(Image.fromarray(frame))
+                agent_positions = self.get_agent_positions(render_env)
+                colored_frame = self.add_colored_agent_markers(frame, agent_positions)
+                frames.append(Image.fromarray(colored_frame))
             
             episode_step += 1
             
@@ -441,5 +510,5 @@ if __name__ == '__main__':
     parser.add_argument("--use_value_clip", type=bool, default=False, help="Whether to use value clipping")
 
     args = parser.parse_args()
-    runner = Runner_MAPPO_PettingZoo(args, env_name="simple_spread", number=1, seed=1)
+    runner = Runner_MAPPO_PettingZoo(args, env_name="simple_spread", number=1, seed=2)
     runner.run()
