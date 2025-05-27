@@ -156,7 +156,7 @@ def compute_shapley_values(obs_all, phi_net, alliance_net, num_samples=50):
 
     return shapley_values
 
-def allocate_rewards(global_reward, shapley_values, alpha=0.3):
+def allocate_rewards(global_reward, shapley_values, alpha=0.05):
     N = shapley_values.shape[0]
     equal_reward = global_reward / N
     allocated = alpha * shapley_values + (1 - alpha) * equal_reward
